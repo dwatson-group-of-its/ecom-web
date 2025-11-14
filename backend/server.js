@@ -38,12 +38,20 @@ app.use(express.static(path.join(__dirname, '../frontend')));
 app.use('/uploads', express.static(path.join(__dirname, './uploads')));
 
 // Database connection
-mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/dwatson_pk', {
+const MONGODB_URI = process.env.MONGODB_URI;
+if (!MONGODB_URI) {
+    console.error('⚠️  WARNING: MONGODB_URI environment variable is not set!');
+    console.error('Database connection will fail. Please set MONGODB_URI in Heroku config.');
+}
+
+mongoose.connect(MONGODB_URI || 'mongodb://localhost:27017/dwatson_pk', {
     useNewUrlParser: true,
-    useUnifiedTopology: true
+    useUnifiedTopology: true,
+    serverSelectionTimeoutMS: 5000, // Timeout after 5s instead of 30s
+    socketTimeoutMS: 45000, // Close sockets after 45s of inactivity
 })
 .then(async () => {
-    console.log('MongoDB connected');
+    console.log('✅ MongoDB connected successfully');
     
     // Ensure admin user exists
     const User = require('./models/User');
@@ -51,25 +59,58 @@ mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/dwatson_p
     const adminPassword = process.env.ADMIN_PASSWORD || 'admin123';
     
     try {
-        const adminUser = await User.findOne({ email: adminEmail });
+        const adminUser = await User.findOne({ email: adminEmail.toLowerCase().trim() });
         if (!adminUser) {
-            console.log('Creating admin user...');
+            console.log('📝 Creating admin user...');
             await User.create({
                 name: 'Admin',
-                email: adminEmail,
+                email: adminEmail.toLowerCase().trim(),
                 password: adminPassword,
                 role: 'admin',
                 isActive: true
             });
-            console.log(`Admin user created: ${adminEmail}`);
+            console.log(`✅ Admin user created: ${adminEmail}`);
+            console.log(`   Password: ${adminPassword}`);
         } else {
-            console.log(`Admin user already exists: ${adminEmail}`);
+            console.log(`✅ Admin user already exists: ${adminEmail}`);
         }
     } catch (error) {
-        console.error('Error ensuring admin user:', error.message);
+        console.error('❌ Error ensuring admin user:', error.message);
+        console.error('   Stack:', error.stack);
     }
 })
-.catch(err => console.log('MongoDB connection error:', err));
+.catch(err => {
+    console.error('❌ MongoDB connection error:', err.message);
+    console.error('   Make sure MONGODB_URI is set correctly in Heroku config');
+    console.error('   Error details:', err);
+});
+
+// Health check endpoint
+app.get('/api/health', (req, res) => {
+    const mongoose = require('mongoose');
+    const dbState = mongoose.connection.readyState;
+    const dbStates = {
+        0: 'disconnected',
+        1: 'connected',
+        2: 'connecting',
+        3: 'disconnecting'
+    };
+    
+    res.json({
+        status: 'ok',
+        timestamp: new Date().toISOString(),
+        database: {
+            state: dbStates[dbState] || 'unknown',
+            readyState: dbState
+        },
+        environment: {
+            nodeEnv: process.env.NODE_ENV || 'development',
+            hasMongoUri: !!process.env.MONGODB_URI,
+            hasJwtSecret: !!process.env.JWT_SECRET,
+            hasAdminEmail: !!process.env.ADMIN_EMAIL
+        }
+    });
+});
 
 // Routes
 app.use('/api/auth', authRoutes);
