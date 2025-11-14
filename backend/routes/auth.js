@@ -99,16 +99,32 @@ router.post('/login', async (req, res) => {
     try {
         const { email, password } = req.body;
         
+        // Validate input
+        if (!email || !password) {
+            return res.status(400).json({ message: 'Please provide email and password' });
+        }
+        
         // Check if user exists
         let user = await User.findOne({ email });
         if (!user) {
             return res.status(400).json({ message: 'Invalid credentials' });
         }
         
+        // Check if user is active
+        if (!user.isActive) {
+            return res.status(403).json({ message: 'Account is deactivated' });
+        }
+        
         // Check password
         const isMatch = await user.comparePassword(password);
         if (!isMatch) {
             return res.status(400).json({ message: 'Invalid credentials' });
+        }
+        
+        // Check JWT_SECRET
+        if (!process.env.JWT_SECRET) {
+            console.error('JWT_SECRET is not set in environment variables');
+            return res.status(500).json({ message: 'Server configuration error' });
         }
         
         // Create JWT token
@@ -121,16 +137,22 @@ router.post('/login', async (req, res) => {
         
         jwt.sign(
             payload,
-            process.env.JWT_SECRET || 'default_secret',
+            process.env.JWT_SECRET,
             { expiresIn: '24h' },
             (err, token) => {
-                if (err) throw err;
+                if (err) {
+                    console.error('JWT signing error:', err);
+                    return res.status(500).json({ message: 'Server error during login' });
+                }
                 res.json({ token });
             }
         );
     } catch (err) {
-        console.error(err.message);
-        res.status(500).send('Server error');
+        console.error('Login error:', err);
+        res.status(500).json({ 
+            message: 'Server error. Please try again later.',
+            error: process.env.NODE_ENV === 'development' ? err.message : undefined
+        });
     }
 });
 

@@ -42,7 +42,33 @@ mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/dwatson_p
     useNewUrlParser: true,
     useUnifiedTopology: true
 })
-.then(() => console.log('MongoDB connected'))
+.then(async () => {
+    console.log('MongoDB connected');
+    
+    // Ensure admin user exists
+    const User = require('./models/User');
+    const adminEmail = process.env.ADMIN_EMAIL || 'admin@dwatson.pk';
+    const adminPassword = process.env.ADMIN_PASSWORD || 'admin123';
+    
+    try {
+        const adminUser = await User.findOne({ email: adminEmail });
+        if (!adminUser) {
+            console.log('Creating admin user...');
+            await User.create({
+                name: 'Admin',
+                email: adminEmail,
+                password: adminPassword,
+                role: 'admin',
+                isActive: true
+            });
+            console.log(`Admin user created: ${adminEmail}`);
+        } else {
+            console.log(`Admin user already exists: ${adminEmail}`);
+        }
+    } catch (error) {
+        console.error('Error ensuring admin user:', error.message);
+    }
+})
 .catch(err => console.log('MongoDB connection error:', err));
 
 // Routes

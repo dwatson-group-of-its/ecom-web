@@ -66,6 +66,15 @@ function showAlert(message, type) {
     
     // Auto-dismiss after 5 seconds
     setTimeout(function() {
-        $('.alert').alert('close');
+        const alertElement = document.querySelector('.alert');
+        if (alertElement && typeof bootstrap !== 'undefined') {
+            const bsAlert = new bootstrap.Alert(alertElement);
+            bsAlert.close();
+        } else {
+            // Fallback: just remove the alert
+            $('.alert').fadeOut(300, function() {
+                $(this).remove();
+            });
+        }
     }, 5000);
 }
